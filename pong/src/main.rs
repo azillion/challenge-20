@@ -15,6 +15,9 @@ fn main() {
 }
 
 #[derive(Component)]
+struct MainCamera;
+
+#[derive(Component)]
 struct FpsRoot;
 
 #[derive(Component)]
@@ -24,6 +27,10 @@ struct FpsText;
 struct WindowSize {
     width: f32,
     height: f32,
+}
+
+fn setup_camera(mut commands: Commands) {
+    commands.spawn((Camera2dBundle::default(), MainCamera));
 }
 
 fn setup_fps_counter(mut commands: Commands) {
@@ -151,7 +158,7 @@ impl Plugin for PongPlugin {
             width: 800.0,
             height: 600.0,
         });
-        app.add_systems(Startup, setup_fps_counter);
+        app.add_systems(Startup, (setup_fps_counter, setup_camera));
         app.add_systems(Update, (fps_text_update_system, fps_counter_showhide));
         // .add_systems(Startup, add_people)
         // .add_systems(Update, (update_people, greet_people).chain());
