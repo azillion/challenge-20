@@ -1,6 +1,9 @@
 use bevy::diagnostic::DiagnosticsStore;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
-use bevy::prelude::*;
+use bevy::{
+    prelude::*,
+    sprite::{MaterialMesh2dBundle, Mesh2dHandle},
+};
 
 pub struct PongPlugin;
 
@@ -23,10 +26,74 @@ struct FpsRoot;
 #[derive(Component)]
 struct FpsText;
 
-#[derive(Resource)]
-struct WindowSize {
-    width: f32,
-    height: f32,
+#[derive(Component)]
+struct Ball;
+
+#[derive(Component)]
+struct Position {
+    x: f32,
+    y: f32,
+}
+
+#[derive(Component)]
+struct Velocity {
+    x: f32,
+    y: f32,
+}
+
+const X_EXTENT: f32 = 600.;
+
+fn startup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    let shapes = [
+        Mesh2dHandle(meshes.add(Circle { radius: 50.0 })),
+        Mesh2dHandle(meshes.add(Rectangle::new(50.0, 100.0))),
+    ];
+    let num_shapes = shapes.len();
+
+    for (i, shape) in shapes.into_iter().enumerate() {
+        // Distribute colors evenly across the rainbow.
+        let color = Color::hsl(360. * i as f32 / num_shapes as f32, 0.95, 0.7);
+
+        commands.spawn(MaterialMesh2dBundle {
+            mesh: shape,
+            material: materials.add(color),
+            transform: Transform::from_xyz(
+                // Distribute shapes from -X_EXTENT to +X_EXTENT.
+                -X_EXTENT / 2. + i as f32 / (num_shapes - 1) as f32 * X_EXTENT,
+                0.0,
+                0.0,
+            ),
+            ..default()
+        });
+    }
+}
+
+fn setup_paddles(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut windows: Query<&mut Window>,
+) {
+    let window = windows.single_mut();
+    let window_width = window.width();
+    let window_height = window.height();
+    println!("window width: {}, height: {}", window_width, window_height);
+    commands.spawn(MaterialMesh2dBundle {
+        mesh: Mesh2dHandle(meshes.add(Rectangle::new(50.0, 100.0))),
+        material: materials.add(Color::WHITE),
+        transform: Transform::from_xyz(0., 0., 0.),
+        ..Default::default()
+    });
+    commands.spawn(MaterialMesh2dBundle {
+        mesh: Mesh2dHandle(meshes.add(Rectangle::new(50.0, 100.0))),
+        material: materials.add(Color::WHITE),
+        transform: Transform::from_xyz(0., 0., 0.),
+        ..Default::default()
+    });
 }
 
 fn setup_camera(mut commands: Commands) {
@@ -154,11 +221,10 @@ fn fps_counter_showhide(
 
 impl Plugin for PongPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(WindowSize {
-            width: 800.0,
-            height: 600.0,
-        });
-        app.add_systems(Startup, (setup_fps_counter, setup_camera));
+        app.add_systems(
+            Startup,
+            (startup, setup_fps_counter, setup_camera, setup_paddles),
+        );
         app.add_systems(Update, (fps_text_update_system, fps_counter_showhide));
         // .add_systems(Startup, add_people)
         // .add_systems(Update, (update_people, greet_people).chain());
