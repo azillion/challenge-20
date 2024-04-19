@@ -5,6 +5,10 @@ use bevy::{
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
 
+const PADDLE_WIDTH: f32 = 10.0;
+const PADDLE_HEIGHT: f32 = 50.0;
+const BALL_RADIUS: f32 = 5.0;
+
 pub struct PongPlugin;
 
 fn main() {
@@ -15,6 +19,13 @@ fn main() {
             FrameTimeDiagnosticsPlugin::default(),
         ))
         .run();
+}
+
+#[derive(Resource)]
+struct Arena {
+    width: f32,
+    height: f32,
+    wall_thickness: f32,
 }
 
 #[derive(Component)]
@@ -30,6 +41,21 @@ struct FpsText;
 struct Ball;
 
 #[derive(Component)]
+struct Paddle;
+
+#[derive(Component)]
+struct Player1;
+
+#[derive(Component)]
+struct Player2;
+
+#[derive(Component)]
+struct Score {
+    player1: u32,
+    player2: u32,
+}
+
+#[derive(Component)]
 struct Position {
     x: f32,
     y: f32,
@@ -41,59 +67,138 @@ struct Velocity {
     y: f32,
 }
 
-const X_EXTENT: f32 = 600.;
+#[derive(Component)]
+struct Wall;
 
-fn startup(
+fn startup(windows: Query<&Window>, mut arena: ResMut<Arena>) {
+    let window = windows.single();
+    let window_width = window.width();
+    let window_height = window.height();
+    let wall_thickness = 4.;
+    let mut arena_width = (window_width - wall_thickness * 2.) * 0.9;
+    let mut arena_height = (window_height - wall_thickness * 2.) * 0.8;
+    if arena_width / arena_height > 2. {
+        arena_width = arena_height * 2.;
+    } else {
+        arena_height = arena_width / 2.;
+    }
+    arena.width = arena_width;
+    arena.height = arena_height;
+    arena.wall_thickness = wall_thickness;
+}
+
+fn setup_arena(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    arena: Res<Arena>,
 ) {
-    let shapes = [
-        Mesh2dHandle(meshes.add(Circle { radius: 50.0 })),
-        Mesh2dHandle(meshes.add(Rectangle::new(50.0, 100.0))),
-    ];
-    let num_shapes = shapes.len();
+    // Top Wall
+    commands.spawn((
+        Wall,
+        MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(arena.width, arena.wall_thickness))),
+            material: materials.add(Color::WHITE),
+            transform: Transform::from_xyz(0., arena.height / 2. + arena.wall_thickness / 2., 0.),
+            ..Default::default()
+        },
+        Position {
+            x: 0.,
+            y: arena.height / 2. + arena.wall_thickness / 2.,
+        },
+    ));
 
-    for (i, shape) in shapes.into_iter().enumerate() {
-        // Distribute colors evenly across the rainbow.
-        let color = Color::hsl(360. * i as f32 / num_shapes as f32, 0.95, 0.7);
+    // Bottom Wall
+    commands.spawn((
+        Wall,
+        MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(arena.width, arena.wall_thickness))),
+            material: materials.add(Color::WHITE),
+            transform: Transform::from_xyz(0., -arena.height / 2. - arena.wall_thickness / 2., 0.),
+            ..Default::default()
+        },
+        Position {
+            x: 0.,
+            y: -arena.height / 2. - arena.wall_thickness / 2.,
+        },
+    ));
 
-        commands.spawn(MaterialMesh2dBundle {
-            mesh: shape,
-            material: materials.add(color),
-            transform: Transform::from_xyz(
-                // Distribute shapes from -X_EXTENT to +X_EXTENT.
-                -X_EXTENT / 2. + i as f32 / (num_shapes - 1) as f32 * X_EXTENT,
-                0.0,
-                0.0,
-            ),
-            ..default()
-        });
-    }
+    // Left Wall
+    commands.spawn((
+        Wall,
+        MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(arena.wall_thickness, arena.height))),
+            material: materials.add(Color::WHITE),
+            transform: Transform::from_xyz(-arena.width / 2. - arena.wall_thickness / 2., 0., 0.),
+            ..Default::default()
+        },
+        Position {
+            x: -arena.width / 2. - arena.wall_thickness / 2.,
+            y: 0.,
+        },
+    ));
+
+    // Right Wall
+    commands.spawn((
+        Wall,
+        MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(arena.wall_thickness, arena.height))),
+            material: materials.add(Color::WHITE),
+            transform: Transform::from_xyz(arena.width / 2. + arena.wall_thickness / 2., 0., 0.),
+            ..Default::default()
+        },
+        Position {
+            x: arena.width / 2. + arena.wall_thickness / 2.,
+            y: 0.,
+        },
+    ));
 }
 
 fn setup_paddles(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    mut windows: Query<&mut Window>,
+    arena: Res<Arena>,
 ) {
-    let window = windows.single_mut();
-    let window_width = window.width();
-    let window_height = window.height();
-    println!("window width: {}, height: {}", window_width, window_height);
-    commands.spawn(MaterialMesh2dBundle {
-        mesh: Mesh2dHandle(meshes.add(Rectangle::new(50.0, 100.0))),
-        material: materials.add(Color::WHITE),
-        transform: Transform::from_xyz(0., 0., 0.),
-        ..Default::default()
-    });
-    commands.spawn(MaterialMesh2dBundle {
-        mesh: Mesh2dHandle(meshes.add(Rectangle::new(50.0, 100.0))),
-        material: materials.add(Color::WHITE),
-        transform: Transform::from_xyz(0., 0., 0.),
-        ..Default::default()
-    });
+    let paddle_padding = 10.;
+    commands.spawn((
+        Paddle,
+        Player1,
+        MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(PADDLE_WIDTH, PADDLE_HEIGHT))),
+            material: materials.add(Color::WHITE),
+            transform: Transform::from_xyz(
+                (-arena.width / 2. + PADDLE_WIDTH / 2.) + paddle_padding,
+                0.,
+                0.,
+            ),
+            ..Default::default()
+        },
+        Position {
+            x: (-arena.width / 2. + PADDLE_WIDTH / 2.) + paddle_padding,
+            y: 0.,
+        },
+        Velocity { x: 0., y: 0. },
+    ));
+    commands.spawn((
+        Paddle,
+        Player2,
+        MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(PADDLE_WIDTH, PADDLE_HEIGHT))),
+            material: materials.add(Color::WHITE),
+            transform: Transform::from_xyz(
+                (arena.width / 2. - PADDLE_WIDTH / 2.) - paddle_padding,
+                0.,
+                0.,
+            ),
+            ..Default::default()
+        },
+        Position {
+            x: (arena.width / 2. - PADDLE_WIDTH / 2.) - paddle_padding,
+            y: 0.,
+        },
+        Velocity { x: 0., y: 0. },
+    ));
 }
 
 fn setup_camera(mut commands: Commands) {
@@ -221,35 +326,19 @@ fn fps_counter_showhide(
 
 impl Plugin for PongPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(Arena {
+            width: 0.,
+            height: 0.,
+            wall_thickness: 4.,
+        });
         app.add_systems(
             Startup,
-            (startup, setup_fps_counter, setup_camera, setup_paddles),
+            (
+                setup_fps_counter,
+                setup_camera,
+                (startup, setup_paddles, setup_arena).chain(),
+            ),
         );
         app.add_systems(Update, (fps_text_update_system, fps_counter_showhide));
-        // .add_systems(Startup, add_people)
-        // .add_systems(Update, (update_people, greet_people).chain());
     }
 }
-
-// fn add_people(mut commands: Commands) {
-//     commands.spawn((Person, Name("Alex".to_string())));
-//     commands.spawn((Person, Name("Ally".to_string())));
-//     commands.spawn((Person, Name("Aether".to_string())));
-// }
-
-// fn greet_people(time: Res<Time>, mut timer: ResMut<GreetTimer>, query: Query<&Name, With<Person>>) {
-//     if timer.0.tick(time.delta()).just_finished() {
-//         for name in &query {
-//             println!("hello {}!", name.0);
-//         }
-//     }
-// }
-
-// fn update_people(mut query: Query<&mut Name, With<Person>>) {
-//     for mut name in &mut query {
-//         if name.0 == "Alex" {
-//             name.0 = "Bob".to_string();
-//             break;
-//         }
-//     }
-// }
