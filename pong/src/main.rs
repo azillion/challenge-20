@@ -8,6 +8,7 @@ use bevy::{
 const PADDLE_WIDTH: f32 = 10.0;
 const PADDLE_HEIGHT: f32 = 50.0;
 const BALL_RADIUS: f32 = 7.0;
+const BALL_VELOCITY: f32 = 75.0;
 
 pub struct PongPlugin;
 
@@ -59,12 +60,6 @@ struct Player2;
 struct ScoreText;
 
 #[derive(Component)]
-struct Position {
-    x: f32,
-    y: f32,
-}
-
-#[derive(Component)]
 struct Velocity {
     x: f32,
     y: f32,
@@ -105,10 +100,6 @@ fn setup_arena(
             transform: Transform::from_xyz(0., arena.height / 2. + arena.wall_thickness / 2., 0.),
             ..Default::default()
         },
-        Position {
-            x: 0.,
-            y: arena.height / 2. + arena.wall_thickness / 2.,
-        },
     ));
 
     // Bottom Wall
@@ -119,10 +110,6 @@ fn setup_arena(
             material: materials.add(Color::WHITE),
             transform: Transform::from_xyz(0., -arena.height / 2. - arena.wall_thickness / 2., 0.),
             ..Default::default()
-        },
-        Position {
-            x: 0.,
-            y: -arena.height / 2. - arena.wall_thickness / 2.,
         },
     ));
 
@@ -135,10 +122,6 @@ fn setup_arena(
             transform: Transform::from_xyz(-arena.width / 2. - arena.wall_thickness / 2., 0., 0.),
             ..Default::default()
         },
-        Position {
-            x: -arena.width / 2. - arena.wall_thickness / 2.,
-            y: 0.,
-        },
     ));
 
     // Right Wall
@@ -149,10 +132,6 @@ fn setup_arena(
             material: materials.add(Color::WHITE),
             transform: Transform::from_xyz(arena.width / 2. + arena.wall_thickness / 2., 0., 0.),
             ..Default::default()
-        },
-        Position {
-            x: arena.width / 2. + arena.wall_thickness / 2.,
-            y: 0.,
         },
     ));
 }
@@ -177,10 +156,6 @@ fn setup_paddles(
             ),
             ..Default::default()
         },
-        Position {
-            x: (-arena.width / 2. + PADDLE_WIDTH / 2.) + paddle_padding,
-            y: 0.,
-        },
         Velocity { x: 0., y: 0. },
     ));
     commands.spawn((
@@ -196,10 +171,6 @@ fn setup_paddles(
             ),
             ..Default::default()
         },
-        Position {
-            x: (arena.width / 2. - PADDLE_WIDTH / 2.) - paddle_padding,
-            y: 0.,
-        },
         Velocity { x: 0., y: 0. },
     ));
 }
@@ -209,6 +180,13 @@ fn setup_ball(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
+    let velocity: f32;
+    if rand::random() {
+        velocity = BALL_VELOCITY;
+    } else {
+        velocity = -BALL_VELOCITY;
+    }
+
     commands.spawn((
         Ball,
         MaterialMesh2dBundle {
@@ -217,8 +195,7 @@ fn setup_ball(
             transform: Transform::from_xyz(0., 0., 0.),
             ..Default::default()
         },
-        Position { x: 0., y: 0. },
-        Velocity { x: 0., y: 0. },
+        Velocity { x: velocity, y: 0. },
     ));
 }
 
@@ -275,6 +252,16 @@ fn setup_score(mut commands: Commands, arena: Res<Arena>) {
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
+}
+
+fn ball_move_system(
+    time: Res<Time>,
+    mut ball_query: Query<(&mut Transform, &Velocity), With<Ball>>,
+) {
+    for (mut transform, velocity) in &mut ball_query {
+        transform.translation.x += velocity.x * time.delta_seconds();
+        transform.translation.y += velocity.y * time.delta_seconds();
+    }
 }
 
 fn setup_fps_counter(mut commands: Commands) {
@@ -437,6 +424,7 @@ impl Plugin for PongPlugin {
                 fps_text_update_system,
                 fps_counter_showhide,
                 score_text_update_system,
+                ball_move_system,
             ),
         );
     }
