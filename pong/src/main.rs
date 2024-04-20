@@ -7,7 +7,7 @@ use bevy::{
 
 const PADDLE_WIDTH: f32 = 10.0;
 const PADDLE_HEIGHT: f32 = 50.0;
-const BALL_RADIUS: f32 = 5.0;
+const BALL_RADIUS: f32 = 7.0;
 
 pub struct PongPlugin;
 
@@ -26,6 +26,12 @@ struct Arena {
     width: f32,
     height: f32,
     wall_thickness: f32,
+}
+
+#[derive(Resource)]
+struct Score {
+    player1: usize,
+    player2: usize,
 }
 
 #[derive(Component)]
@@ -50,10 +56,7 @@ struct Player1;
 struct Player2;
 
 #[derive(Component)]
-struct Score {
-    player1: u32,
-    player2: u32,
-}
+struct ScoreText;
 
 #[derive(Component)]
 struct Position {
@@ -201,6 +204,75 @@ fn setup_paddles(
     ));
 }
 
+fn setup_ball(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    commands.spawn((
+        Ball,
+        MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(BALL_RADIUS, BALL_RADIUS))),
+            material: materials.add(Color::WHITE),
+            transform: Transform::from_xyz(0., 0., 0.),
+            ..Default::default()
+        },
+        Position { x: 0., y: 0. },
+        Velocity { x: 0., y: 0. },
+    ));
+}
+
+fn setup_score(mut commands: Commands, arena: Res<Arena>) {
+    commands.spawn((
+        Player1,
+        ScoreText,
+        TextBundle {
+            text: Text {
+                sections: vec![TextSection {
+                    value: "0".to_string(),
+                    style: TextStyle {
+                        font_size: 50.0,
+                        color: Color::WHITE,
+                        ..Default::default()
+                    },
+                }],
+                ..Default::default()
+            },
+            style: Style {
+                position_type: PositionType::Absolute,
+                top: Val::Px(arena.height / 2. - 50.),
+                left: Val::Px(arena.width / 2. - 50.),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    ));
+    commands.spawn((
+        Player2,
+        ScoreText,
+        TextBundle {
+            text: Text {
+                sections: vec![TextSection {
+                    value: "0".to_string(),
+                    style: TextStyle {
+                        font_size: 50.0,
+                        color: Color::WHITE,
+                        ..Default::default()
+                    },
+                }],
+                ..Default::default()
+            },
+            style: Style {
+                position_type: PositionType::Absolute,
+                top: Val::Px(arena.height / 2. - 50.),
+                right: Val::Px(arena.width / 2. - 50.),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    ));
+}
+
 fn setup_camera(mut commands: Commands) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
 }
@@ -311,6 +383,21 @@ fn fps_text_update_system(
     }
 }
 
+fn score_text_update_system(
+    mut queries: ParamSet<(
+        Query<&mut Text, (With<Player1>, With<ScoreText>)>,
+        Query<&mut Text, (With<Player2>, With<ScoreText>)>,
+    )>,
+    score: Res<Score>,
+) {
+    for mut text in queries.p0().iter_mut() {
+        text.sections[0].value = score.player1.to_string();
+    }
+    for mut text in queries.p1().iter_mut() {
+        text.sections[0].value = score.player2.to_string();
+    }
+}
+
 fn fps_counter_showhide(
     mut q: Query<&mut Visibility, With<FpsRoot>>,
     kbd: Res<ButtonInput<KeyCode>>,
@@ -331,14 +418,26 @@ impl Plugin for PongPlugin {
             height: 0.,
             wall_thickness: 4.,
         });
+        app.insert_resource(Score {
+            player1: 0,
+            player2: 0,
+        });
         app.add_systems(
             Startup,
             (
                 setup_fps_counter,
                 setup_camera,
-                (startup, setup_paddles, setup_arena).chain(),
+                setup_ball,
+                (startup, setup_paddles, setup_arena, setup_score).chain(),
             ),
         );
-        app.add_systems(Update, (fps_text_update_system, fps_counter_showhide));
+        app.add_systems(
+            Update,
+            (
+                fps_text_update_system,
+                fps_counter_showhide,
+                score_text_update_system,
+            ),
+        );
     }
 }
