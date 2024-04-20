@@ -8,7 +8,7 @@ use bevy::{
 const PADDLE_WIDTH: f32 = 10.0;
 const PADDLE_HEIGHT: f32 = 50.0;
 const BALL_RADIUS: f32 = 7.0;
-const BALL_VELOCITY: f32 = 75.0;
+const BALL_VELOCITY: f32 = 200.0;
 
 pub struct PongPlugin;
 
@@ -156,7 +156,6 @@ fn setup_paddles(
             ),
             ..Default::default()
         },
-        Velocity { x: 0., y: 0. },
     ));
     commands.spawn((
         Paddle,
@@ -171,7 +170,6 @@ fn setup_paddles(
             ),
             ..Default::default()
         },
-        Velocity { x: 0., y: 0. },
     ));
 }
 
@@ -256,11 +254,102 @@ fn setup_camera(mut commands: Commands) {
 
 fn ball_move_system(
     time: Res<Time>,
-    mut ball_query: Query<(&mut Transform, &Velocity), With<Ball>>,
+    mut set: ParamSet<(
+        Query<(&mut Transform, &mut Velocity), With<Ball>>,
+        Query<&Transform, With<Paddle>>,
+    )>,
+    arena: Res<Arena>,
+    mut score: ResMut<Score>,
 ) {
-    for (mut transform, velocity) in &mut ball_query {
+    let paddles: Vec<Transform> = set.p1().iter().copied().collect();
+
+    for (mut transform, mut velocity) in set.p0().iter_mut() {
+        // score if ball goes out of bounds and reset ball position
+        if transform.translation.x + BALL_RADIUS >= arena.width / 2. {
+            score.player1 += 1;
+            transform.translation = Vec3::new(0., 0., 0.);
+            velocity.x = -velocity.x;
+        } else if transform.translation.x - BALL_RADIUS <= -arena.width / 2. {
+            score.player2 += 1;
+            transform.translation = Vec3::new(0., 0., 0.);
+            velocity.x = -velocity.x;
+        }
+
+        // check for collision with paddles
+        for paddle in paddles.iter() {
+            if collision_check(&transform, paddle) {
+                velocity.x = -velocity.x;
+                velocity.y = (transform.translation.y - paddle.translation.y) * 5.;
+            }
+        } 
+
+        // check for collision with ceiling/floor
+        if transform.translation.y + BALL_RADIUS >= arena.height / 2.
+            || transform.translation.y - BALL_RADIUS <= -arena.height / 2.
+        {
+            velocity.y = -velocity.y;
+        }
+
         transform.translation.x += velocity.x * time.delta_seconds();
         transform.translation.y += velocity.y * time.delta_seconds();
+    }
+}
+
+fn collision_check(ball: &Transform, paddle: &Transform) -> bool {
+    let ball_x = ball.translation.x;
+    let ball_y = ball.translation.y;
+    let ball_width = BALL_RADIUS * 2.;
+    let ball_height = BALL_RADIUS * 2.;
+    let paddle_x = paddle.translation.x;
+    let paddle_y = paddle.translation.y;
+
+    if ball_x + ball_width / 2. >= paddle_x - PADDLE_WIDTH / 2.
+        && ball_x - ball_width / 2. <= paddle_x + PADDLE_WIDTH / 2.
+        && ball_y + ball_height / 2. >= paddle_y - PADDLE_HEIGHT / 2.
+        && ball_y - ball_height / 2. <= paddle_y + PADDLE_HEIGHT / 2.
+    {
+        return true;
+    } 
+    false
+}
+
+fn move_paddle_system(
+    time: Res<Time>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut set: ParamSet<(
+        Query<&mut Transform, (With<Paddle>, With<Player1>)>,
+        Query<&mut Transform, (With<Paddle>, With<Player2>)>,
+    )>,
+    arena: Res<Arena>,
+) {
+    for mut transform in set.p0().iter_mut() {
+        if keyboard_input.pressed(KeyCode::KeyW) {
+            transform.translation.y += 200. * time.delta_seconds();
+        }
+        if keyboard_input.pressed(KeyCode::KeyS) {
+            transform.translation.y -= 200. * time.delta_seconds();
+        }
+        if transform.translation.y + PADDLE_HEIGHT / 2. >= arena.height / 2. {
+            transform.translation.y = arena.height / 2. - PADDLE_HEIGHT / 2.;
+        }
+        if transform.translation.y - PADDLE_HEIGHT / 2. <= -arena.height / 2. {
+            transform.translation.y = -arena.height / 2. + PADDLE_HEIGHT / 2.;
+        }
+    }
+
+    for mut transform in set.p1().iter_mut() {
+        if keyboard_input.pressed(KeyCode::ArrowUp) {
+            transform.translation.y += 200. * time.delta_seconds();
+        }
+        if keyboard_input.pressed(KeyCode::ArrowDown) {
+            transform.translation.y -= 200. * time.delta_seconds();
+        }
+        if transform.translation.y + PADDLE_HEIGHT / 2. >= arena.height / 2. {
+            transform.translation.y = arena.height / 2. - PADDLE_HEIGHT / 2.;
+        }
+        if transform.translation.y - PADDLE_HEIGHT / 2. <= -arena.height / 2. {
+            transform.translation.y = -arena.height / 2. + PADDLE_HEIGHT / 2.;
+        }
     }
 }
 
@@ -412,7 +501,7 @@ impl Plugin for PongPlugin {
         app.add_systems(
             Startup,
             (
-                setup_fps_counter,
+                // setup_fps_counter,
                 setup_camera,
                 setup_ball,
                 (startup, setup_paddles, setup_arena, setup_score).chain(),
@@ -421,10 +510,11 @@ impl Plugin for PongPlugin {
         app.add_systems(
             Update,
             (
-                fps_text_update_system,
-                fps_counter_showhide,
+                // fps_text_update_system,
+                // fps_counter_showhide,
                 score_text_update_system,
                 ball_move_system,
+                move_paddle_system,
             ),
         );
     }
